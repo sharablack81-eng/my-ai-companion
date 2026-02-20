@@ -42,7 +42,7 @@ export function ChatInput({
   };
 
   return (
-    <div className="border-t border-border bg-card p-4">
+    <div className="border-t border-border bg-card p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       <div className="mx-auto max-w-3xl">
         <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:ring-2 focus-within:ring-ring focus-within:border-primary transition-all">
           <textarea
