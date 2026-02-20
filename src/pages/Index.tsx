@@ -5,6 +5,9 @@ import { ChatInput } from "@/components/ChatInput";
 import { AgentStatusIndicator } from "@/components/AgentStatusIndicator";
 import { EmptyState } from "@/components/EmptyState";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   getConversations,
   createConversation,
@@ -22,7 +25,8 @@ const Index = () => {
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>("idle");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [browserActions, setBrowserActions] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -202,6 +206,16 @@ const Index = () => {
       />
 
       <div className="flex flex-col flex-1 min-w-0">
+        {/* Mobile header */}
+        {isMobile && (
+          <div className="flex items-center gap-2 p-3 border-b border-border bg-card">
+            <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="h-9 w-9">
+              <Menu className="h-5 w-5" />
+            </Button>
+            <span className="text-sm font-semibold text-foreground">Nexus</span>
+          </div>
+        )}
+
         {/* Chat area */}
         {!activeConvId && messages.length === 0 ? (
           <EmptyState onStart={handleNewChat} />

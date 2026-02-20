@@ -1,8 +1,9 @@
 import { Conversation } from "@/types/chat";
-import { Plus, MessageSquare, Trash2, Cpu } from "lucide-react";
+import { Plus, MessageSquare, Trash2, Cpu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDistanceToNow } from "date-fns";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface ChatSidebarProps {
   conversations: Conversation[];
@@ -23,7 +24,15 @@ export function ChatSidebar({
   isOpen,
   onToggle,
 }: ChatSidebarProps) {
-  if (!isOpen) {
+  const isMobile = useIsMobile();
+
+  const handleSelect = (id: string) => {
+    onSelect(id);
+    if (isMobile) onToggle();
+  };
+
+  // Collapsed icon bar (desktop only)
+  if (!isOpen && !isMobile) {
     return (
       <div className="flex flex-col items-center py-4 px-2 border-r border-border bg-sidebar w-14 shrink-0">
         <Button variant="ghost" size="icon" onClick={onToggle} className="mb-4 text-sidebar-foreground hover:text-foreground">
@@ -36,8 +45,11 @@ export function ChatSidebar({
     );
   }
 
-  return (
-    <div className="flex flex-col w-72 border-r border-border bg-sidebar shrink-0">
+  // On mobile: full-screen overlay. On desktop: fixed sidebar.
+  const sidebarContent = (
+    <div className={`flex flex-col bg-sidebar shrink-0 h-full ${
+      isMobile ? "w-full" : "w-72 border-r border-border"
+    }`}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-2">
@@ -45,15 +57,15 @@ export function ChatSidebar({
           <h1 className="text-base font-semibold text-foreground tracking-tight">Nexus</h1>
         </div>
         <Button variant="ghost" size="icon" onClick={onToggle} className="h-8 w-8 text-sidebar-foreground hover:text-foreground">
-          <MessageSquare className="h-4 w-4" />
+          {isMobile ? <X className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
         </Button>
       </div>
 
       {/* New Chat */}
       <div className="p-3">
         <Button
-          onClick={onNew}
-          className="w-full justify-start gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={() => { onNew(); if (isMobile) onToggle(); }}
+          className="w-full justify-start gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-11"
         >
           <Plus className="h-4 w-4" />
           New Chat
@@ -66,8 +78,8 @@ export function ChatSidebar({
           {conversations.map((conv) => (
             <div
               key={conv.id}
-              onClick={() => onSelect(conv.id)}
-              className={`group flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-colors text-sm ${
+              onClick={() => handleSelect(conv.id)}
+              className={`group flex items-center justify-between px-3 py-3 rounded-lg cursor-pointer transition-colors text-sm ${
                 activeId === conv.id
                   ? "bg-accent text-accent-foreground"
                   : "text-sidebar-foreground hover:bg-muted hover:text-foreground"
@@ -82,7 +94,9 @@ export function ChatSidebar({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0"
+                className={`h-8 w-8 text-muted-foreground hover:text-destructive shrink-0 ${
+                  isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                }`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete(conv.id);
@@ -100,4 +114,21 @@ export function ChatSidebar({
       </ScrollArea>
     </div>
   );
+
+  if (isMobile && isOpen) {
+    return (
+      <div className="fixed inset-0 z-50 flex">
+        {/* Backdrop */}
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onToggle} />
+        {/* Sidebar panel */}
+        <div className="relative z-10 w-[85%] max-w-sm h-full animate-slide-in">
+          {sidebarContent}
+        </div>
+      </div>
+    );
+  }
+
+  if (isMobile && !isOpen) return null;
+
+  return sidebarContent;
 }
