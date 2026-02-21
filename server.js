@@ -6,6 +6,7 @@ import { chromium } from 'playwright';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,9 +25,6 @@ const myTelegramId = process.env.MY_TELEGRAM_ID ? parseInt(process.env.MY_TELEGR
 
 // Express Middleware
 app.use(express.json());
-
-// Serve static files from the 'dist' directory
-app.use(express.static(path.join(__dirname, 'dist')));
 
 // API Endpoint to proxy chat messages to Claude
 app.post('/api/chat', async (req, res) => {
@@ -160,7 +158,9 @@ bot.on('text', async (ctx) => {
         await ctx.reply("Nexus is opening a browser to read that link for you...");
         try {
             const { textContent } = await surfTheWeb(userInput);
-            const prompt = `Please summarize the following content from the website ${userInput}:\n\n${textContent}`
+            const prompt = `Please summarize the following content from the website ${userInput}:
+
+${textContent}`
             const response = await anthropic.messages.create({
                 model: 'claude-3-5-sonnet-20240620',
                 messages: [{ role: 'user', content: prompt }],
@@ -179,11 +179,24 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
     bot.launch();
 }
 
+// --- Static File Serving ---
+const frontendDistPath = path.join(__dirname, 'dist');
+console.log(`[Server] Checking for frontend build at: ${frontendDistPath}`);
 
-// Serve the index.html for any other requests
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
+if (fs.existsSync(path.join(frontendDistPath, 'index.html'))) {
+  console.log('[Server] Frontend build found. Serving static files.');
+  app.use(express.static(frontendDistPath));
+  // For any other request, serve the index.html file for client-side routing
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+} else {
+  console.warn('[Server] Frontend build not found. Running in backend-only mode.');
+  app.get("/", (req, res) => {
+    res.send("Server is running, but the frontend build was not found.");
+  });
+}
+
 
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
