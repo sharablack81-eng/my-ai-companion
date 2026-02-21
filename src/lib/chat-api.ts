@@ -1,87 +1,42 @@
-import { supabase } from "@/integrations/supabase/client";
-import type { Conversation, Message } from "@/types/chat";
+import { Message } from '@/types/chat';
 
-export async function getConversations(): Promise<Conversation[]> {
-  const { data, error } = await supabase
-    .from("conversations")
-    .select("*")
-    .order("updated_at", { ascending: false });
-  if (error) throw error;
-  return data as Conversation[];
-}
+export async function sendMessage(messages: Message[]): Promise<string> {
+  try {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messages }),
+    });
 
-export async function createConversation(title = "New Chat"): Promise<Conversation> {
-  const { data, error } = await supabase
-    .from("conversations")
-    .insert({ title })
-    .select()
-    .single();
-  if (error) throw error;
-  return data as Conversation;
-}
+    // If the response is not OK, we need to handle it as an error.
+    if (!response.ok) {
+      // Try to get a more detailed error message from the response body.
+      const errorData = await response.json().catch(() => null); // Gracefully handle if the body isn't JSON
+      if (errorData && errorData.error) {
+        throw new Error(`Server error: ${errorData.error}`);
+      }
+      // Fallback to the status text if there's no JSON body.
+      throw new Error(`Server returned an error: ${response.status} ${response.statusText}`);
+    }
 
-export async function deleteConversation(id: string): Promise<void> {
-  const { error } = await supabase.from("conversations").delete().eq("id", id);
-  if (error) throw error;
-}
+    const data = await response.json();
 
-export async function updateConversationTitle(id: string, title: string): Promise<void> {
-  const { error } = await supabase.from("conversations").update({ title }).eq("id", id);
-  if (error) throw error;
-}
+    if (data.success && data.reply) {
+      return data.reply;
+    } else if (data.error) {
+      // This handles cases where the server sends a 200 OK status but indicates an error in the JSON body.
+      throw new Error(data.error);
+    } else {
+      // This is a fallback for unexpected successful response structures.
+      throw new Error('Received an unexpected response format from the server.');
+    }
 
-export async function getMessages(conversationId: string): Promise<Message[]> {
-  const { data, error } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return data as Message[];
-}
-
-export async function saveMessage(msg: {
-  conversation_id: string;
-  role: string;
-  content: string;
-  status?: string;
-}): Promise<Message> {
-  const { data, error } = await supabase
-    .from("messages")
-    .insert(msg)
-    .select()
-    .single();
-  if (error) throw error;
-  return data as Message;
-}
-
-export async function streamChat({
-  messages,
-  onDelta,
-  onDone,
-  signal,
-}: {
-  messages: { role: string; content: string }[];
-  onDelta: (text: string) => void;
-  onDone: () => void;
-  signal?: AbortSignal;
-}) {
-  const resp = await fetch("/api/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ messages }),
-    signal,
-  });
-
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `HTTP ${resp.status}`);
+  } catch (error) {
+    // This will catch network errors and errors thrown from the response handling above.
+    console.error("Error sending message:", error);
+    // We re-throw the error so the UI layer can catch it and display an appropriate message.
+    throw error;
   }
-
-  const response = await resp.json();
-  const content = response.content[0].text;
-  onDelta(content);
-  onDone();
 }

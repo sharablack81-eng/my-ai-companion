@@ -14,23 +14,35 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Claude API setup
+// --- Environment Variable Checks ---
+if (!process.env.CLAUDE_SESSION_TOKEN) {
+  console.error("FATAL: CLAUDE_SESSION_TOKEN environment variable is not set.");
+}
+if (!process.env.TELEGRAM_BOT_TOKEN) {
+  console.warn("Warning: TELEGRAM_BOT_TOKEN is not set. Telegram bot features will be disabled.");
+}
+
+// --- API Clients ---
 const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_SESSION_TOKEN,
 });
 
-// Telegraf Bot setup
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+const bot = process.env.TELEGRAM_BOT_TOKEN ? new Telegraf(process.env.TELEGRAM_BOT_TOKEN) : null;
 const myTelegramId = process.env.MY_TELEGRAM_ID ? parseInt(process.env.MY_TELEGRAM_ID, 10) : undefined;
 
-// Express Middleware
+// --- Express Middleware ---
 app.use(express.json());
 
-// API Endpoint to proxy chat messages to Claude
+// --- Core API Endpoint for Chat ---
 app.post('/api/chat', async (req, res) => {
   const { messages } = req.body;
+
   if (!messages) {
-    return res.status(400).json({ error: 'Messages are required' });
+    return res.status(400).json({ success: false, error: 'Messages are required' });
+  }
+
+  if (!process.env.CLAUDE_SESSION_TOKEN) {
+    return res.status(500).json({ success: false, error: "This server is not configured with an AI provider." });
   }
 
   try {
@@ -39,140 +51,150 @@ app.post('/api/chat', async (req, res) => {
       messages: messages,
       max_tokens: 1024,
     });
-    res.json(response);
+    
+    // Ensure we have content to send back
+    const replyText = response.content?.[0]?.text;
+    if (!replyText) {
+      throw new Error("Received an empty response from the AI.");
+    }
+
+    res.status(200).json({ success: true, reply: replyText });
+
   } catch (error) {
     console.error('Error proxying to Claude:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({
+      success: false,
+      error: error.message || 'An unknown error occurred while contacting the AI.'
+    });
   }
 });
 
 /**
- * Nexus "Web Eyes" - Function to surf the web
+ * Nexus "Web Eyes" - A robust function to surf the web
  */
 async function surfTheWeb(url) {
-    const browser = await chromium.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    
+    let browser;
     try {
+        browser = await chromium.launch({
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        
         await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
         
-        // Take a screenshot to "see" the page
-        const screenshot = await page.screenshot();
-        
-        // Extract text content for Claude to read
         const textContent = await page.evaluate(() => document.body.innerText.slice(0, 5000));
         
-        await browser.close();
-        return { screenshot, textContent };
+        return { textContent };
     } catch (error) {
-        await browser.close();
-        throw error;
+        console.error(`Error in surfTheWeb for URL: ${url}`, error);
+        // Re-throw the error to be caught by the calling function
+        throw new Error(`Failed to browse the web. ${error.message}`);
+    } finally {
+        if (browser) {
+            await browser.close();
+        }
     }
 }
 
-bot.command('search', async (ctx) => {
-    if (myTelegramId && ctx.from.id !== myTelegramId) {
-        return ctx.reply('You are not authorized to use this bot.');
-    }
+if (bot) {
+    bot.command('search', async (ctx) => {
+        if (myTelegramId && ctx.from.id !== myTelegramId) {
+            return ctx.reply('You are not authorized to use this bot.');
+        }
 
-  const args = ctx.message.text.split(' ');
-  const url = args[1];
-  const query = args.slice(2).join(' ');
+      const args = ctx.message.text.split(' ');
+      const url = args[1];
+      const query = args.slice(2).join(' ');
 
-  if (!url) {
-    return ctx.reply('Please provide a URL.');
-  }
+      if (!url) {
+        return ctx.reply('Please provide a URL.');
+      }
 
-  try {
-    ctx.reply('Nexus is opening a browser to read that link for you...');
-    const { textContent } = await surfTheWeb(url);
-    const prompt = `Based on the following text from ${url}, ${query}:\n\n${textContent}`;
+      try {
+        await ctx.reply('Nexus is opening a browser to read that link for you...');
+        const { textContent } = await surfTheWeb(url);
+        const prompt = `Based on the following text from ${url}, ${query}:
 
-    const response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20240620',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 512,
-    });
+${textContent}`;
 
-    ctx.reply(response.content[0].text);
-  } catch (error) {
-    console.error('Error processing search command:', error);
-    ctx.reply('Sorry, I encountered an error.');
-  }
-});
-
-/**
- * Image Search Functionality
- */
-bot.command('find', async (ctx) => {
-    if (myTelegramId && ctx.from.id !== myTelegramId) {
-        return ctx.reply('You are not authorized to use this bot.');
-    }
-    const query = ctx.message.text.split(' ').slice(1).join(' ');
-    if (!query) return ctx.reply("What should I look for?");
-
-    await ctx.reply(`Nexus is searching the web for: ${query}...`);
-
-    const browser = await chromium.launch({ args: ['--no-sandbox'] });
-    const page = await browser.newPage();
-    
-    try {
-        // Go to DuckDuckGo Images
-        await page.goto(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`);
-        await page.waitForSelector('.tile--img__img', { timeout: 10000 });
-        
-        // Grab the first image source
-        const imageUrl = await page.evaluate(() => {
-            const img = document.querySelector('.tile--img__img');
-            return img ? img.src || img.getAttribute('data-src') : null;
+        const response = await anthropic.messages.create({
+            model: 'claude-3-5-sonnet-20240620',
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 512,
         });
 
-        if (imageUrl) {
-            // The URL might be relative, so we need to resolve it
-            const absoluteUrl = new URL(imageUrl, `https://duckduckgo.com/`).href;
-            await ctx.replyWithPhoto({ url: absoluteUrl });
-        } else {
-            await ctx.reply("I found the results, but couldn't grab the direct image link.");
-        }
-    } catch (e) {
-        ctx.reply("Error accessing the web: " + e.message);
-    } finally {
-        await browser.close();
-    }
-});
+        ctx.reply(response.content[0].text);
+      } catch (error) {
+        console.error('Error processing search command:', error);
+        ctx.reply(`Sorry, I encountered an error: ${error.message}`);
+      }
+    });
 
-// Telegram Listener for Claude Brain
-bot.on('text', async (ctx) => {
-    if (myTelegramId && ctx.from.id !== myTelegramId) {
-        return ctx.reply('You are not authorized to use this bot.');
-    }
-    const userInput = ctx.message.text;
-    
-    // Check if the user wants to "surf"
-    if (userInput.startsWith('http')) {
-        await ctx.reply("Nexus is opening a browser to read that link for you...");
+    bot.command('find', async (ctx) => {
+        if (myTelegramId && ctx.from.id !== myTelegramId) {
+            return ctx.reply('You are not authorized to use this bot.');
+        }
+        const query = ctx.message.text.split(' ').slice(1).join(' ');
+        if (!query) return ctx.reply("What should I look for?");
+
+        await ctx.reply(`Nexus is searching the web for: ${query}...`);
+        let browser;
         try {
-            const { textContent } = await surfTheWeb(userInput);
-            const prompt = `Please summarize the following content from the website ${userInput}:\n\n${textContent}`
-            const response = await anthropic.messages.create({
-                model: 'claude-3-5-sonnet-20240620',
-                messages: [{ role: 'user', content: prompt }],
-                max_tokens: 512,
+            browser = await chromium.launch({ args: ['--no-sandbox'] });
+            const page = await browser.newPage();
+            
+            await page.goto(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`);
+            await page.waitForSelector('.tile--img__img', { timeout: 10000 });
+            
+            const imageUrl = await page.evaluate(() => {
+                const img = document.querySelector('.tile--img__img');
+                return img ? img.src || img.getAttribute('data-src') : null;
             });
-            ctx.reply(response.content[0].text);
-        } catch(error) {
-            console.error("Error processing URL: ", error)
-            ctx.reply("Sorry, I couldn't process that URL.")
+
+            if (imageUrl) {
+                const absoluteUrl = new URL(imageUrl, `https://duckduckgo.com/`).href;
+                await ctx.replyWithPhoto({ url: absoluteUrl });
+            } else {
+                await ctx.reply("I found the results, but couldn't grab the direct image link.");
+            }
+        } catch (e) {
+            ctx.reply("Error accessing the web: " + e.message);
+        } finally {
+            if (browser) {
+                await browser.close();
+            }
         }
-    }
-});
+    });
+    
+    bot.on('text', async (ctx) => {
+        if (myTelegramId && ctx.from.id !== myTelegramId) {
+            return ctx.reply('You are not authorized to use this bot.');
+        }
+        const userInput = ctx.message.text;
+        
+        if (userInput.startsWith('http')) {
+            await ctx.reply("Nexus is opening a browser to read that link for you...");
+            try {
+                const { textContent } = await surfTheWeb(userInput);
+                const prompt = `Please summarize the following content from the website ${userInput}:
 
+${textContent}`
+                const response = await anthropic.messages.create({
+                    model: 'claude-3-5-sonnet-20240620',
+                    messages: [{ role: 'user', content: prompt }],
+                    max_tokens: 512,
+                });
+                ctx.reply(response.content[0].text);
+            } catch(error) {
+                console.error("Error processing URL: ", error);
+                ctx.reply(`Sorry, I couldn't process that URL: ${error.message}`);
+            }
+        }
+    });
 
-if (process.env.TELEGRAM_BOT_TOKEN) {
     bot.launch();
+    console.log("Telegram bot launched.");
 }
 
 // --- Static File Serving ---
