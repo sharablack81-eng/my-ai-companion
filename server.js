@@ -89,9 +89,7 @@ bot.command('search', async (ctx) => {
   try {
     ctx.reply('Nexus is opening a browser to read that link for you...');
     const { textContent } = await surfTheWeb(url);
-    const prompt = `Based on the following text from ${url}, ${query}:
-
-${textContent}`;
+    const prompt = `Based on the following text from ${url}, ${query}:\n\n${textContent}`;
 
     const response = await anthropic.messages.create({
         model: 'claude-3-5-sonnet-20240620',
@@ -158,9 +156,7 @@ bot.on('text', async (ctx) => {
         await ctx.reply("Nexus is opening a browser to read that link for you...");
         try {
             const { textContent } = await surfTheWeb(userInput);
-            const prompt = `Please summarize the following content from the website ${userInput}:
-
-${textContent}`
+            const prompt = `Please summarize the following content from the website ${userInput}:\n\n${textContent}`
             const response = await anthropic.messages.create({
                 model: 'claude-3-5-sonnet-20240620',
                 messages: [{ role: 'user', content: prompt }],
@@ -180,23 +176,21 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
 }
 
 // --- Static File Serving ---
-const frontendDistPath = path.join(__dirname, 'dist');
-console.log(`[Server] Checking for frontend build at: ${frontendDistPath}`);
+const frontendDistPath = path.resolve(__dirname, 'dist');
+console.log(`[Server] Resolved frontend build path: ${frontendDistPath}`);
 
-if (fs.existsSync(path.join(frontendDistPath, 'index.html'))) {
+if (fs.existsSync(frontendDistPath)) {
   console.log('[Server] Frontend build found. Serving static files.');
   app.use(express.static(frontendDistPath));
-  // For any other request, serve the index.html file for client-side routing
   app.get('*', (req, res) => {
     res.sendFile(path.join(frontendDistPath, 'index.html'));
   });
 } else {
   console.warn('[Server] Frontend build not found. Running in backend-only mode.');
-  app.get("/", (req, res) => {
-    res.send("Server is running, but the frontend build was not found.");
+  app.get('/', (req, res) => {
+    res.send('Server is running, but the frontend build was not found.');
   });
 }
-
 
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
