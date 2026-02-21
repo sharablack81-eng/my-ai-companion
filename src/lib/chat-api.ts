@@ -1,4 +1,4 @@
-import { Message } from '@/types/chat';
+import { Message, Conversation } from '@/types/chat';
 
 export async function sendMessage(messages: Message[]): Promise<string> {
   try {
@@ -10,14 +10,11 @@ export async function sendMessage(messages: Message[]): Promise<string> {
       body: JSON.stringify({ messages }),
     });
 
-    // If the response is not OK, we need to handle it as an error.
     if (!response.ok) {
-      // Try to get a more detailed error message from the response body.
-      const errorData = await response.json().catch(() => null); // Gracefully handle if the body isn't JSON
+      const errorData = await response.json().catch(() => null);
       if (errorData && errorData.error) {
         throw new Error(`Server error: ${errorData.error}`);
       }
-      // Fallback to the status text if there's no JSON body.
       throw new Error(`Server returned an error: ${response.status} ${response.statusText}`);
     }
 
@@ -26,17 +23,81 @@ export async function sendMessage(messages: Message[]): Promise<string> {
     if (data.success && data.reply) {
       return data.reply;
     } else if (data.error) {
-      // This handles cases where the server sends a 200 OK status but indicates an error in the JSON body.
       throw new Error(data.error);
     } else {
-      // This is a fallback for unexpected successful response structures.
       throw new Error('Received an unexpected response format from the server.');
     }
 
   } catch (error) {
-    // This will catch network errors and errors thrown from the response handling above.
     console.error("Error sending message:", error);
-    // We re-throw the error so the UI layer can catch it and display an appropriate message.
     throw error;
   }
+}
+
+export async function getConversations(): Promise<Conversation[]> {
+  console.log("chat-api: getConversations (mock)");
+  return Promise.resolve([]);
+}
+
+export async function createConversation(title: string): Promise<Conversation> {
+  console.log(`chat-api: createConversation with title "${title}" (mock)`);
+  const newConversation: Conversation = {
+    id: crypto.randomUUID(),
+    title: title,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  return Promise.resolve(newConversation);
+}
+
+export async function deleteConversation(id: string): Promise<boolean> {
+  console.log(`chat-api: deleteConversation with id "${id}" (mock)`);
+  return Promise.resolve(true);
+}
+
+export async function saveMessage(message: Omit<Message, 'id' | 'created_at'>): Promise<Message> {
+  console.log("chat-api: saveMessage (mock)");
+  const newMessage: Message = {
+    id: crypto.randomUUID(),
+    ...message,
+    created_at: new Date().toISOString(),
+  };
+  return Promise.resolve(newMessage);
+}
+
+export async function updateConversationTitle(id: string, title: string): Promise<Conversation> {
+    console.log(`chat-api: updateConversationTitle with id "${id}" (mock)`);
+    const updatedConversation: Conversation = {
+        id: id,
+        title: title,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+    };
+    return Promise.resolve(updatedConversation);
+}
+
+export async function getMessages(conversationId: string): Promise<Message[]> {
+    console.log(`chat-api: getMessages for conversation "${conversationId}" (mock)`);
+    return Promise.resolve([]);
+}
+
+export async function streamChat(options: { messages: Omit<Message, 'id' | 'created_at'>[], onDelta: (delta: string) => void, onDone: () => void, signal: AbortSignal }): Promise<void> {
+    console.log("chat-api: streamChat (mock)");
+    const { messages, onDelta, onDone, signal } = options;
+    const reply = await sendMessage(messages.map(m => ({ ...m, id: 'mock-id', created_at: '' })));
+    
+    let i = 0;
+    const interval = setInterval(() => {
+        if (i < reply.length) {
+            onDelta(reply[i]);
+            i++;
+        } else {
+            clearInterval(interval);
+            onDone();
+        }
+    }, 50);
+
+    signal.addEventListener('abort', () => {
+        clearInterval(interval);
+    });
 }
