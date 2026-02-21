@@ -1,46 +1,81 @@
-import { Message, Conversation } from '@/types/chat';
+import type { Message, Conversation } from '@/types/chat';
 
-export async function sendMessage(messages: Message[]): Promise<string> {
+// --- Core Chat Streaming --- 
+
+export async function streamChat(options: {
+  messages: Omit<Message, 'id' | 'created_at'>[];
+  onDelta: (chunk: string) => void;
+  onDone: () => void;
+  signal: AbortSignal;
+}): Promise<void> {
+  const { messages, onDelta, onDone, signal } = options;
+
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.error || 'Failed to fetch chat stream');
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('Failed to read response body');
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
   try {
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ messages }),
-    });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      if (errorData && errorData.error) {
-        throw new Error(`Server error: ${errorData.error}`);
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Keep any partial line for the next chunk
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonString = line.slice(6);
+          if (jsonString === '[DONE]') {
+            return; // Stream finished
+          }
+          try {
+            const parsed = JSON.parse(jsonString);
+            // This structure is based on the OpenAI streaming format
+            const chunk = parsed.choices?.[0]?.delta?.content;
+            if (chunk) {
+              onDelta(chunk);
+            }
+          } catch (e) {
+            console.error('Failed to parse stream chunk:', jsonString);
+          }
+        }
       }
-      throw new Error(`Server returned an error: ${response.status} ${response.statusText}`);
     }
-
-    const data = await response.json();
-
-    if (data.success && data.reply) {
-      return data.reply;
-    } else if (data.error) {
-      throw new Error(data.error);
-    } else {
-      throw new Error('Received an unexpected response format from the server.');
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.error("Error reading stream:", e);
     }
-
-  } catch (error) {
-    console.error("Error sending message:", error);
-    throw error;
+  } finally {
+    reader.releaseLock();
+    onDone();
   }
 }
 
+
+// --- Mock Conversation Management (for UI development) ---
+
 export async function getConversations(): Promise<Conversation[]> {
-  console.log("chat-api: getConversations (mock)");
   return Promise.resolve([]);
 }
 
 export async function createConversation(title: string): Promise<Conversation> {
-  console.log(`chat-api: createConversation with title "${title}" (mock)`);
   const newConversation: Conversation = {
     id: crypto.randomUUID(),
     title: title,
@@ -55,8 +90,12 @@ export async function deleteConversation(id: string): Promise<boolean> {
   return Promise.resolve(true);
 }
 
+export async function getMessages(conversationId: string): Promise<Message[]> {
+    console.log(`chat-api: getMessages for conversation "${conversationId}" (mock)`);
+    return Promise.resolve([]);
+}
+
 export async function saveMessage(message: Omit<Message, 'id' | 'created_at'>): Promise<Message> {
-  console.log("chat-api: saveMessage (mock)");
   const newMessage: Message = {
     id: crypto.randomUUID(),
     ...message,
@@ -74,30 +113,4 @@ export async function updateConversationTitle(id: string, title: string): Promis
         updated_at: new Date().toISOString(),
     };
     return Promise.resolve(updatedConversation);
-}
-
-export async function getMessages(conversationId: string): Promise<Message[]> {
-    console.log(`chat-api: getMessages for conversation "${conversationId}" (mock)`);
-    return Promise.resolve([]);
-}
-
-export async function streamChat(options: { messages: Omit<Message, 'id' | 'created_at'>[], onDelta: (delta: string) => void, onDone: () => void, signal: AbortSignal }): Promise<void> {
-    console.log("chat-api: streamChat (mock)");
-    const { messages, onDelta, onDone, signal } = options;
-    const reply = await sendMessage(messages.map(m => ({ ...m, id: 'mock-id', created_at: '' })));
-    
-    let i = 0;
-    const interval = setInterval(() => {
-        if (i < reply.length) {
-            onDelta(reply[i]);
-            i++;
-        } else {
-            clearInterval(interval);
-            onDone();
-        }
-    }, 50);
-
-    signal.addEventListener('abort', () => {
-        clearInterval(interval);
-    });
 }
