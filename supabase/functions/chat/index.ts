@@ -12,9 +12,17 @@ serve(async (req) => {
   }
 
   try {
+    console.log("Chat function invoked.");
     const { messages } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    if (!LOVABLE_API_KEY) {
+        console.error("LOVABLE_API_KEY is not configured");
+        throw new Error("LOVABLE_API_KEY is not configured");
+    }
+    console.log("LOVABLE_API_KEY found.");
+
+    const model = "claude-3-haiku-20240307";
+    console.log("Calling Lovable AI gateway with model:", model);
 
     const response = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -25,7 +33,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: model,
           messages: [
             {
               role: "system",
@@ -44,6 +52,8 @@ When you don't know something, say so honestly.`,
         }),
       }
     );
+    
+    console.log("Lovable AI gateway response status:", response.status);
 
     if (!response.ok) {
       if (response.status === 429) {
