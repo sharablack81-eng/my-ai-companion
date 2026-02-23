@@ -21,7 +21,7 @@ serve(async (req) => {
     }
     console.log("LOVABLE_API_KEY found.");
 
-    const model = "claude-3-haiku-20240307";
+    const model = "google/gemini-3-flash-preview";
     console.log("Calling Lovable AI gateway with model:", model);
 
     const response = await fetch(
