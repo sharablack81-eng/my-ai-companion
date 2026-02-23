@@ -27,7 +27,7 @@ const Index = () => {
   const [agentStatus, setAgentStatus] = useState<AgentStatus>("idle");
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [browserActions, setBrowserActions] = useState(false);
+  const [browserActions, setBrowserActions] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -55,7 +55,7 @@ const Index = () => {
 
   const handleNewChat = useCallback(async () => {
     try {
-      const conv = await createConversation();
+      const conv = await createConversation("New Chat");
       setConversations((prev) => [conv, ...prev]);
       setActiveConvId(conv.id);
       setMessages([]);
@@ -129,7 +129,7 @@ const Index = () => {
 
       try {
         const chatHistory = [...messages, { role: "user" as const, content: text }].map((m) => ({
-          role: m.role,
+          role: m.role as string,
           content: m.content,
         }));
 
