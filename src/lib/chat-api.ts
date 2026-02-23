@@ -10,8 +10,9 @@ export async function streamChat(options: {
   onDelta: (chunk: string) => void;
   onDone: () => void;
   signal: AbortSignal;
+  browserActions?: boolean;
 }): Promise<void> {
-  const { messages, onDelta, onDone, signal } = options;
+  const { messages, onDelta, onDone, signal, browserActions } = options;
 
   const response = await fetch(CHAT_URL, {
     method: "POST",
@@ -19,7 +20,7 @@ export async function streamChat(options: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, browserActions }),
     signal,
   });
 
