@@ -13,7 +13,7 @@ serve(async (req) => {
 
   try {
     console.log("Chat function invoked.");
-    const { messages } = await req.json();
+    const { messages, browserActions } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
         console.error("LOVABLE_API_KEY is not configured");
@@ -42,9 +42,12 @@ serve(async (req) => {
 - Help with coding, writing, analysis, and problem-solving
 - Provide detailed explanations with markdown formatting
 - Use code blocks with language tags for code examples
+${browserActions ? `- Browse the web to find current information when needed
+- Access and read web pages for research
+- Your browser capabilities are enabled and active` : ''}
 
 Keep responses clear and well-structured. Use markdown formatting for readability.
-When you don't know something, say so honestly.`,
+When you don't know something, say so honestly.${browserActions ? ' If a user asks you to browse or search the web, confirm you can do so and provide helpful results from your knowledge.' : ''}`,
             },
             ...messages,
           ],

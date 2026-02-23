@@ -148,6 +148,7 @@ const Index = () => {
 
         await streamChat({
           messages: chatHistory,
+          browserActions,
           onDelta: (chunk) => {
             assistantContent += chunk;
             setMessages((prev) =>
